@@ -4,9 +4,10 @@ import { CustomerWorkspace, RequestWorkspace } from './CustomerWorkspace';
 import { AppointmentWorkspace } from './AppointmentWorkspace';
 import { WorkOrderWorkspace } from './WorkOrderWorkspace';
 import { OperationsOverview } from './OperationsOverview';
+import { ServiceAdvisorWorkspace } from './ServiceAdvisorWorkspace';
 import './AppointmentWorkspace.css';
 
-type View = 'Overview' | 'Customers' | 'Service Requests' | 'Scheduling' | 'Work Orders';
+type View = 'Overview' | 'Customers' | 'Service Requests' | 'Scheduling' | 'Work Orders' | 'AI Advisor';
 type Json = Record<string, unknown>;
 type Slot = { technicianId: string; technicianName?: string; startsAt: string; endsAt: string };
 const API = '/api/v1';
@@ -37,6 +38,7 @@ function formatDate(value: unknown): string {
 const menu: { group: string; items: { label: View; icon: string }[] }[] = [
   { group: 'WORKSPACE', items: [{ label: 'Overview', icon: '◫' }, { label: 'Customers', icon: '♙' }, { label: 'Service Requests', icon: '▤' }] },
   { group: 'OPERATIONS', items: [{ label: 'Scheduling', icon: '▦' }, { label: 'Work Orders', icon: '▧' }] },
+  { group: 'INTELLIGENCE', items: [{ label: 'AI Advisor', icon: '✦' }] },
 ];
 
 function App() {
@@ -99,6 +101,7 @@ function App() {
           {view === 'Scheduling' && <><div className="two-col scheduling"><section className="panel"><div className="panel-heading"><span className="panel-icon">▦</span><div><h3>Find available technicians</h3><p>Search working hours, skills, time off, and bookings</p></div></div><form className="form-stack" onSubmit={findSlots}><label>Equipment category<input required value={category} onChange={e=>setCategory(e.target.value)} placeholder="REFRIGERATOR"/></label><div className="form-row"><label>Service date<input required type="date" value={date} onChange={e=>setDate(e.target.value)}/></label><label>Duration (minutes)<select value={duration} onChange={e=>setDuration(Number(e.target.value))}><option value={30}>30 minutes</option><option value={60}>60 minutes</option><option value={90}>90 minutes</option><option value={120}>120 minutes</option></select></label></div><button className="primary-btn" disabled={busy}>Search availability <span>↗</span></button></form></section><section className="panel scheduling-explain"><div className="panel-heading"><span className="panel-icon">✦</span><div><h3>Scheduling rules</h3><p>Calculated in your Spring Boot backend</p></div></div>{['Only active technicians with matching skills','Inside each technician’s local working hours','Excludes absences and active booking assignments','Booking must still revalidate before reservation'].map((s,i)=><div key={s} className="rule"><span>{i+1}</span>{s}</div>)}</section></div><section className="panel result-panel"><div className="panel-heading"><span className="panel-icon">◷</span><div><h3>Available appointment windows</h3><p>{availableCount ? `${availableCount} results returned` : 'Results appear after you search'}</p></div></div>{availableCount ? <div className="slots-table"><div className="table-header"><span>TECHNICIAN</span><span>START (LOCAL DISPLAY)</span><span>END (LOCAL DISPLAY)</span></div>{slots.map((slot,i)=><div className="slot-row" key={`${slot.technicianId}-${slot.startsAt}-${i}`}><span><strong>{slot.technicianName || 'Technician'}</strong><small>{slot.technicianId}</small></span><span>{formatDate(slot.startsAt)}</span><span>{formatDate(slot.endsAt)}</span></div>)}</div>:<EmptyState icon="▦" text="No slots loaded. Run a search to retrieve real availability."/>}</section><AppointmentWorkspace customerId={customerId} date={date} category={category} slots={slots} onAvailabilityRefresh={() => call<Slot[]>(`/availability?${new URLSearchParams({ category: category.trim(), date, durationMinutes: String(duration), stepMinutes: '30' })}`).then(setSlots)} /></>}
 
           {view === 'Work Orders' && <WorkOrderWorkspace />}
+          {view === 'AI Advisor' && <ServiceAdvisorWorkspace onUseAvailability={({ category: reviewedCategory, date: selectedDate, slots: foundSlots }) => { setCategory(reviewedCategory); setDate(selectedDate); setSlots(foundSlots); setNotice(null); setView('Scheduling'); }} />}
           <footer>© SERVIQ AI <span>•</span> Local development interface <span>•</span> All operational data comes from the backend</footer>
         </div>
       </main>
