@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import './App.css';
+import { CustomerWorkspace, RequestWorkspace } from './CustomerWorkspace';
 
 type View = 'Overview' | 'Customers' | 'Service Requests' | 'Scheduling' | 'Work Orders';
 type Json = Record<string, unknown>;
@@ -53,9 +54,6 @@ function App() {
   const [notice, setNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [customerId, setCustomerId] = useState('');
-  const [customer, setCustomer] = useState<Json | null>(null);
-  const [requestId, setRequestId] = useState('');
-  const [request, setRequest] = useState<Json | null>(null);
   const [workOrderId, setWorkOrderId] = useState('');
   const [workOrder, setWorkOrder] = useState<Json | null>(null);
   const [history, setHistory] = useState<unknown>(null);
@@ -63,7 +61,6 @@ function App() {
   const [category, setCategory] = useState('REFRIGERATOR');
   const [date, setDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
   const [duration, setDuration] = useState(60);
-  const [requestForm, setRequestForm] = useState({ customerId: '', addressId: '', assetId: '', issueSummary: '', issueDescription: '', priority: 'NORMAL' });
   const availableCount = slots.length;
 
   useEffect(() => {
@@ -77,17 +74,12 @@ function App() {
     catch (e) { setNotice({ kind: 'error', text: e instanceof Error ? e.message : 'Request failed' }); }
     finally { setBusy(false); }
   }
-  function findCustomer(e: FormEvent) { e.preventDefault(); if (!customerId.trim()) return; void run(() => call<Json>(`/customers/${encodeURIComponent(customerId.trim())}`), setCustomer, 'Customer loaded from Serviq API.'); }
-  function findRequest(e: FormEvent) { e.preventDefault(); if (!requestId.trim()) return; void run(() => call<Json>(`/service-requests/${encodeURIComponent(requestId.trim())}`), setRequest, 'Service request loaded.'); }
   function findWorkOrder(e: FormEvent) { e.preventDefault(); if (!workOrderId.trim()) return; void run(async () => {
     const id = encodeURIComponent(workOrderId.trim());
     const [record, events] = await Promise.all([call<Json>(`/work-orders/${id}`), call<unknown>(`/work-orders/${id}/history`)]);
     return { record, events };
   }, ({record,events}) => { setWorkOrder(record); setHistory(events); }, 'Work order and history loaded.'); }
   function findSlots(e: FormEvent) { e.preventDefault(); void run(() => call<Slot[]>(`/availability?${new URLSearchParams({ category: category.trim(), date, durationMinutes: String(duration), stepMinutes: '30' })}`), setSlots, 'Availability refreshed from PostgreSQL.'); }
-  function createRequest(e: FormEvent) { e.preventDefault(); void run(() => call<Json>('/service-requests', {
-    method: 'POST', body: JSON.stringify({ ...requestForm, assetId: requestForm.assetId.trim() || null, intakeChannel: 'STAFF' })
-  }), data => { setRequest(data); setRequestId(String(data.requestId ?? '')); setView('Service Requests'); }, 'Service request created.'); }
 
   const title = view === 'Overview' ? 'Operations overview' : view;
   return (
@@ -117,9 +109,8 @@ function App() {
             <div className="quick-grid">{([{ name: 'Find a customer', sub: 'Look up a customer by ID', icon: '♙', target: 'Customers' },{ name: 'Open service request', sub: 'Retrieve or create a service request', icon: '▤', target: 'Service Requests' },{ name: 'Check technician slots', sub: 'Find available appointment windows', icon: '▦', target: 'Scheduling' },{ name: 'Review work order', sub: 'Inspect work and status history', icon: '▧', target: 'Work Orders' }] as {name:string;sub:string;icon:string;target:View}[]).map(item => <button key={item.name} className="quick-action" onClick={() => setView(item.target)}><span className="quick-icon">{item.icon}</span><span><strong>{item.name}</strong><small>{item.sub}</small></span><span className="quick-arrow">↗</span></button>)}</div>
           </>}
 
-          {view === 'Customers' && <div className="two-col"><section className="panel"><div className="panel-heading"><span className="panel-icon">♙</span><div><h3>Customer lookup</h3><p>Retrieve an existing customer record</p></div></div><form onSubmit={findCustomer} className="form-stack"><label>Customer UUID<input required placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value={customerId} onChange={e => setCustomerId(e.target.value)}/></label><button className="primary-btn" disabled={busy}>Retrieve customer <span>→</span></button></form></section><section className="panel"><div className="panel-heading"><span className="panel-icon">▤</span><div><h3>Customer details</h3><p>Live data from your customer API</p></div></div>{customer ? <div className="details">{keyValue(customer)}</div> : <EmptyState icon="♙" text="Enter a customer UUID to view their record."/>}</section></div>}
-
-          {view === 'Service Requests' && <div className="two-col"><section className="panel"><div className="panel-heading"><span className="panel-icon">＋</span><div><h3>Create service request</h3><p>Record a real customer service issue</p></div></div><form className="form-stack" onSubmit={createRequest}><label>Customer UUID<input required value={requestForm.customerId} onChange={e => setRequestForm(f=>({...f,customerId:e.target.value}))}/></label><label>Address UUID<input required value={requestForm.addressId} onChange={e => setRequestForm(f=>({...f,addressId:e.target.value}))}/></label><label>Asset UUID <small>(optional)</small><input value={requestForm.assetId} onChange={e => setRequestForm(f=>({...f,assetId:e.target.value}))}/></label><label>Issue summary<input required maxLength={200} value={requestForm.issueSummary} onChange={e => setRequestForm(f=>({...f,issueSummary:e.target.value}))} placeholder="Refrigerator is not cooling"/></label><label>Issue description<textarea required rows={3} value={requestForm.issueDescription} onChange={e => setRequestForm(f=>({...f,issueDescription:e.target.value}))} placeholder="What happened, and when?"/></label><label>Priority<select value={requestForm.priority} onChange={e=>setRequestForm(f=>({...f,priority:e.target.value}))}><option>LOW</option><option>NORMAL</option><option>HIGH</option><option>URGENT</option></select></label><button disabled={busy} className="primary-btn">Create service request <span>→</span></button></form></section><section className="panel"><div className="panel-heading"><span className="panel-icon">⌕</span><div><h3>Find an existing request</h3><p>Inspect request status and details</p></div></div><form className="inline-form" onSubmit={findRequest}><input aria-label="Service request UUID" required placeholder="Service request UUID" value={requestId} onChange={e=>setRequestId(e.target.value)}/><button disabled={busy} className="secondary-btn">Search</button></form>{request ? <div className="details separated">{keyValue(request)}</div> : <EmptyState icon="▤" text="Find a request or create a new one."/>}</section></div>}
+          {view === 'Customers' && <CustomerWorkspace selectedId={customerId} onSelect={setCustomerId} />}
+          {view === 'Service Requests' && <RequestWorkspace selectedId={customerId} onSelect={setCustomerId} />}
 
           {view === 'Scheduling' && <><div className="two-col scheduling"><section className="panel"><div className="panel-heading"><span className="panel-icon">▦</span><div><h3>Find available technicians</h3><p>Search working hours, skills, time off, and bookings</p></div></div><form className="form-stack" onSubmit={findSlots}><label>Equipment category<input required value={category} onChange={e=>setCategory(e.target.value)} placeholder="REFRIGERATOR"/></label><div className="form-row"><label>Service date<input required type="date" value={date} onChange={e=>setDate(e.target.value)}/></label><label>Duration (minutes)<select value={duration} onChange={e=>setDuration(Number(e.target.value))}><option value={30}>30 minutes</option><option value={60}>60 minutes</option><option value={90}>90 minutes</option><option value={120}>120 minutes</option></select></label></div><button className="primary-btn" disabled={busy}>Search availability <span>↗</span></button></form></section><section className="panel scheduling-explain"><div className="panel-heading"><span className="panel-icon">✦</span><div><h3>Scheduling rules</h3><p>Calculated in your Spring Boot backend</p></div></div>{['Only active technicians with matching skills','Inside each technician’s local working hours','Excludes absences and active booking assignments','Booking must still revalidate before reservation'].map((s,i)=><div key={s} className="rule"><span>{i+1}</span>{s}</div>)}</section></div><section className="panel result-panel"><div className="panel-heading"><span className="panel-icon">◷</span><div><h3>Available appointment windows</h3><p>{availableCount ? `${availableCount} results returned` : 'Results appear after you search'}</p></div></div>{availableCount ? <div className="slots-table"><div className="table-header"><span>TECHNICIAN</span><span>START (LOCAL DISPLAY)</span><span>END (LOCAL DISPLAY)</span></div>{slots.map((slot,i)=><div className="slot-row" key={`${slot.technicianId}-${slot.startsAt}-${i}`}><span><strong>{slot.technicianName || 'Technician'}</strong><small>{slot.technicianId}</small></span><span>{formatDate(slot.startsAt)}</span><span>{formatDate(slot.endsAt)}</span></div>)}</div>:<EmptyState icon="▦" text="No slots loaded. Run a search to retrieve real availability."/>}</section></>}
 
