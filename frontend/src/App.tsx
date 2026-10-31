@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import './App.css';
 import { CustomerWorkspace, RequestWorkspace } from './CustomerWorkspace';
 import { AppointmentWorkspace } from './AppointmentWorkspace';
+import { WorkOrderWorkspace } from './WorkOrderWorkspace';
 import './AppointmentWorkspace.css';
 
 type View = 'Overview' | 'Customers' | 'Service Requests' | 'Scheduling' | 'Work Orders';
@@ -31,19 +32,6 @@ function formatDate(value: unknown): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' });
 }
-function formatVal(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '—';
-  if (typeof value === 'object') return JSON.stringify(value);
-  return String(value);
-}
-function keyValue(data: Json, labels?: Record<string, string>) {
-  return Object.entries(data).filter(([key]) => !key.startsWith('_')).map(([key, value]) => (
-    <div className="detail-line" key={key}>
-      <span>{labels?.[key] ?? key.replace(/([A-Z])/g, ' $1').replace(/^./, x => x.toUpperCase())}</span>
-      <strong>{/At$/.test(key) ? formatDate(value) : formatVal(value)}</strong>
-    </div>
-  ));
-}
 
 const menu: { group: string; items: { label: View; icon: string }[] }[] = [
   { group: 'WORKSPACE', items: [{ label: 'Overview', icon: '◫' }, { label: 'Customers', icon: '♙' }, { label: 'Service Requests', icon: '▤' }] },
@@ -56,9 +44,6 @@ function App() {
   const [notice, setNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [customerId, setCustomerId] = useState('');
-  const [workOrderId, setWorkOrderId] = useState('');
-  const [workOrder, setWorkOrder] = useState<Json | null>(null);
-  const [history, setHistory] = useState<unknown>(null);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [category, setCategory] = useState('REFRIGERATOR');
   const [date, setDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
@@ -76,11 +61,6 @@ function App() {
     catch (e) { setNotice({ kind: 'error', text: e instanceof Error ? e.message : 'Request failed' }); }
     finally { setBusy(false); }
   }
-  function findWorkOrder(e: FormEvent) { e.preventDefault(); if (!workOrderId.trim()) return; void run(async () => {
-    const id = encodeURIComponent(workOrderId.trim());
-    const [record, events] = await Promise.all([call<Json>(`/work-orders/${id}`), call<unknown>(`/work-orders/${id}/history`)]);
-    return { record, events };
-  }, ({record,events}) => { setWorkOrder(record); setHistory(events); }, 'Work order and history loaded.'); }
   function findSlots(e: FormEvent) { e.preventDefault(); void run(() => call<Slot[]>(`/availability?${new URLSearchParams({ category: category.trim(), date, durationMinutes: String(duration), stepMinutes: '30' })}`), setSlots, 'Availability refreshed from PostgreSQL.'); }
 
   const title = view === 'Overview' ? 'Operations overview' : view;
@@ -105,7 +85,7 @@ function App() {
             <div className="stat-grid">
               <div className="stat-card"><div className="stat-top"><span>Backend connection</span><span className="stat-symbol">↗</span></div><strong>{health === 'online' ? 'Online' : health === 'checking' ? 'Checking' : 'Offline'}</strong><small>Spring Boot actuator health</small><div className="stat-foot"><span className={`tiny-dot ${health}`}/>Verified from /actuator/health</div></div>
               <div className="stat-card"><div className="stat-top"><span>Availability results</span><span className="stat-symbol">▦</span></div><strong>{slots.length ? slots.length : '—'}</strong><small>Slots in most recent search</small><div className="stat-foot">{slots.length ? 'Live query results' : 'Run a scheduling search'}</div></div>
-              <div className="stat-card"><div className="stat-top"><span>Work order</span><span className="stat-symbol">▧</span></div><strong className="status-card-text">{workOrder ? formatVal(workOrder.status) : 'Not loaded'}</strong><small>{workOrder ? `#${formatVal(workOrder.workOrderNumber)}` : 'Lookup a work order to view'}</small><div className="stat-foot">No simulated KPI data</div></div>
+              <div className="stat-card"><div className="stat-top"><span>Work order</span><span className="stat-symbol">▧</span></div><strong className="status-card-text">Workspace</strong><small>Open Work Orders to manage service jobs</small><div className="stat-foot">No simulated KPI data</div></div>
             </div>
             <div className="section-title second"><div><h3>Quick actions</h3><p>Continue a service workflow</p></div></div>
             <div className="quick-grid">{([{ name: 'Find a customer', sub: 'Look up a customer by ID', icon: '♙', target: 'Customers' },{ name: 'Open service request', sub: 'Retrieve or create a service request', icon: '▤', target: 'Service Requests' },{ name: 'Check technician slots', sub: 'Find available appointment windows', icon: '▦', target: 'Scheduling' },{ name: 'Review work order', sub: 'Inspect work and status history', icon: '▧', target: 'Work Orders' }] as {name:string;sub:string;icon:string;target:View}[]).map(item => <button key={item.name} className="quick-action" onClick={() => setView(item.target)}><span className="quick-icon">{item.icon}</span><span><strong>{item.name}</strong><small>{item.sub}</small></span><span className="quick-arrow">↗</span></button>)}</div>
@@ -116,7 +96,7 @@ function App() {
 
           {view === 'Scheduling' && <><div className="two-col scheduling"><section className="panel"><div className="panel-heading"><span className="panel-icon">▦</span><div><h3>Find available technicians</h3><p>Search working hours, skills, time off, and bookings</p></div></div><form className="form-stack" onSubmit={findSlots}><label>Equipment category<input required value={category} onChange={e=>setCategory(e.target.value)} placeholder="REFRIGERATOR"/></label><div className="form-row"><label>Service date<input required type="date" value={date} onChange={e=>setDate(e.target.value)}/></label><label>Duration (minutes)<select value={duration} onChange={e=>setDuration(Number(e.target.value))}><option value={30}>30 minutes</option><option value={60}>60 minutes</option><option value={90}>90 minutes</option><option value={120}>120 minutes</option></select></label></div><button className="primary-btn" disabled={busy}>Search availability <span>↗</span></button></form></section><section className="panel scheduling-explain"><div className="panel-heading"><span className="panel-icon">✦</span><div><h3>Scheduling rules</h3><p>Calculated in your Spring Boot backend</p></div></div>{['Only active technicians with matching skills','Inside each technician’s local working hours','Excludes absences and active booking assignments','Booking must still revalidate before reservation'].map((s,i)=><div key={s} className="rule"><span>{i+1}</span>{s}</div>)}</section></div><section className="panel result-panel"><div className="panel-heading"><span className="panel-icon">◷</span><div><h3>Available appointment windows</h3><p>{availableCount ? `${availableCount} results returned` : 'Results appear after you search'}</p></div></div>{availableCount ? <div className="slots-table"><div className="table-header"><span>TECHNICIAN</span><span>START (LOCAL DISPLAY)</span><span>END (LOCAL DISPLAY)</span></div>{slots.map((slot,i)=><div className="slot-row" key={`${slot.technicianId}-${slot.startsAt}-${i}`}><span><strong>{slot.technicianName || 'Technician'}</strong><small>{slot.technicianId}</small></span><span>{formatDate(slot.startsAt)}</span><span>{formatDate(slot.endsAt)}</span></div>)}</div>:<EmptyState icon="▦" text="No slots loaded. Run a search to retrieve real availability."/>}</section><AppointmentWorkspace customerId={customerId} date={date} category={category} slots={slots} onAvailabilityRefresh={() => call<Slot[]>(`/availability?${new URLSearchParams({ category: category.trim(), date, durationMinutes: String(duration), stepMinutes: '30' })}`).then(setSlots)} /></>}
 
-          {view === 'Work Orders' && <div className="two-col"><section className="panel"><div className="panel-heading"><span className="panel-icon">⌕</span><div><h3>Work order lookup</h3><p>Retrieve a work order and its audit trail</p></div></div><form className="form-stack" onSubmit={findWorkOrder}><label>Work order UUID<input required value={workOrderId} onChange={e=>setWorkOrderId(e.target.value)} placeholder="fe5139b4-a827-4525-9660-88b14392b7b5"/></label><button className="primary-btn" disabled={busy}>Retrieve work order <span>→</span></button></form>{workOrder && <div className="details separated">{keyValue(workOrder)}</div>}</section><section className="panel"><div className="panel-heading"><span className="panel-icon">◷</span><div><h3>Status history</h3><p>Auditable transitions stored in PostgreSQL</p></div></div>{history ? <div className="history-view">{Array.isArray(history) ? history.map((item,i) => <div className="history-item" key={i}><span className="history-bullet"/><div className="details">{item && typeof item === 'object' ? keyValue(item as Json) : formatVal(item)}</div></div>) : <pre>{JSON.stringify(history,null,2)}</pre>}</div> : <EmptyState icon="◷" text="Retrieve a work order to inspect its recorded history."/>}</section></div>}
+          {view === 'Work Orders' && <WorkOrderWorkspace />}
           <footer>© SERVIQ AI <span>•</span> Local development interface <span>•</span> All operational data comes from the backend</footer>
         </div>
       </main>
