@@ -3,6 +3,7 @@ import './App.css';
 import { CustomerWorkspace, RequestWorkspace } from './CustomerWorkspace';
 import { AppointmentWorkspace } from './AppointmentWorkspace';
 import { WorkOrderWorkspace } from './WorkOrderWorkspace';
+import { OperationsOverview } from './OperationsOverview';
 import './AppointmentWorkspace.css';
 
 type View = 'Overview' | 'Customers' | 'Service Requests' | 'Scheduling' | 'Work Orders';
@@ -80,6 +81,7 @@ function App() {
           {notice && <div className={`notice ${notice.kind}`} role="status"><span>{notice.kind === 'success' ? '✓' : '!'}</span>{notice.text}<button onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
 
           {view === 'Overview' && <>
+            <OperationsOverview />
             <section className="hero"><div><div className="hero-kicker"><span/> THE OPERATIONS HUB</div><h2>Every service.<br/><em>In perfect sync.</em></h2><p>Manage customer requests, technician availability, and work orders through your real backend workflows.</p><button className="primary-btn" onClick={() => setView('Scheduling')}>Explore availability <span>↗</span></button></div><div className="hero-art" aria-hidden="true"><div className="orb orb-one"/><div className="orb orb-two"/><div className="orb orb-three"/><div className="orb-core">S</div><span className="orbit-label a">CUSTOMERS</span><span className="orbit-label b">TECHNICIANS</span><span className="orbit-label c">OPERATIONS</span></div></section>
             <div className="section-title"><div><h3>Workspace health</h3><p>Live connectivity and implementation status</p></div><span className="minor-tag">LIVE SYSTEM</span></div>
             <div className="stat-grid">
